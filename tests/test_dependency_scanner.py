@@ -106,3 +106,49 @@ def test_scan_rejects_invalid_json(tmp_path, monkeypatch):
 
     with pytest.raises(DependencyScanError, match="parse"):
         scan_dependencies(requirements)
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("fix_versions", "1.0.1"),
+        ("aliases", "CVE-2099-0001"),
+    ],
+)
+def test_scan_rejects_invalid_vulnerability_metadata(
+    tmp_path, monkeypatch, field, invalid_value
+):
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("example-package==1.0.0\n", encoding="utf-8")
+
+    audit_output = [
+        {
+            "name": "example-package",
+            "version": "1.0.0",
+            "vulns": [
+                {
+                    "id": "PYSEC-TEST-001",
+                    "fix_versions": ["1.0.1"],
+                    "aliases": ["CVE-2099-0001"],
+                    "description": "A simulated vulnerability.",
+                }
+            ],
+        }
+    ]
+    audit_output[0]["vulns"][0][field] = invalid_value
+
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(
+            args=args[0],
+            returncode=1,
+            stdout=json.dumps(audit_output),
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "guardrail.dependency_scanner.subprocess.run",
+        fake_run,
+    )
+
+    with pytest.raises(DependencyScanError, match=field):
+        scan_dependencies(requirements)

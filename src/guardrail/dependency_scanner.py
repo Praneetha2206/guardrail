@@ -101,18 +101,37 @@ def scan_dependencies(
                 raise DependencyScanError(
                     f"Invalid vulnerability entry for package {package}."
                 )
+            
+            fix_versions = vulnerability.get("fix_versions") or []
+            aliases = vulnerability.get("aliases") or []
+
+            if not isinstance(fix_versions, list) or not all(
+                isinstance(item, str) for item in fix_versions
+            ):
+                raise DependencyScanError(
+                    f"Invalid fix_versions data for package {package}."
+                )
+
+            if not isinstance(aliases, list) or not all(
+                isinstance(item, str) for item in aliases
+            ):
+                raise DependencyScanError(
+                    f"Invalid aliases data for package {package}."
+                )
 
             findings.append(
                 VulnerabilityFinding(
                     package=package,
                     installed_version=version,
                     vulnerability_id=vulnerability.get("id", "unknown"),
-                    fix_versions=tuple(
-                        vulnerability.get("fix_versions") or []
-                    ),
-                    aliases=tuple(vulnerability.get("aliases") or []),
+                    fix_versions=tuple(fix_versions),
+                    aliases=tuple(aliases),
                     description=vulnerability.get("description") or "",
                 )
             )
+
+            
+
+
 
     return findings
