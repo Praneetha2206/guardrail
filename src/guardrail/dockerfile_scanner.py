@@ -24,17 +24,26 @@ def scan_dockerfile(
     findings: list[DockerfileFinding] = []
     lines = path.read_text(encoding="utf-8").splitlines()
 
-    user_instructions: list[tuple[int, str]] = []
+    # Store the USER instructions separately for each build stage.
+    stages: list[dict[str, object]] = []
+    current_stage: dict[str, object] | None = None
+
+    remote_script_pattern = re.compile(
+        r"\b(curl|wget)\b.*\|\s*(sh|bash)\b",
+        re.IGNORECASE,
+    )
 
     for line_number, line in enumerate(lines, start=1):
         stripped_line = line.strip()
 
-        if stripped_line.upper().startswith("USER "):
-            user_value = stripped_line.split(maxsplit=1)[1].split(":")[0]
-            user_instructions.append((line_number, user_value))
-
         if stripped_line.upper().startswith("FROM "):
             image_reference = stripped_line.split()[1]
+
+            current_stage = {
+                "start_line": line_number,
+                "user_instructions": [],
+            }
+            stages.append(current_stage)
 
             if image_reference.endswith(":latest"):
                 findings.append(
@@ -49,36 +58,16 @@ def scan_dockerfile(
                     )
                 )
 
-    if not user_instructions:
-        findings.append(
-            DockerfileFinding(
-                rule_id="GR001",
-                message="Dockerfile does not specify a USER instruction.",
-                line_number=1,
-                severity="HIGH",
+        if (
+            current_stage is not None
+            and stripped_line.upper().startswith("USER ")
+        ):
+            user_value = (
+                stripped_line.split(maxsplit=1)[1]
+                .split(":")[0]
             )
-        )
-
-    for line_number, user_value in user_instructions:
-        if user_value.lower() in {"root", "0"}:
-            findings.append(
-                DockerfileFinding(
-                    rule_id="GR001",
-                    message=(
-                        "USER instruction explicitly selects the root user."
-                    ),
-                    line_number=line_number,
-                    severity="HIGH",
-                )
-            )
-
-    remote_script_pattern = re.compile(
-        r"\b(curl|wget)\b.*\|\s*(sh|bash)\b",
-        re.IGNORECASE,
-    )
-
-    for line_number, line in enumerate(lines, start=1):
-        stripped_line = line.strip()
+            user_instructions = current_stage["user_instructions"]
+            user_instructions.append((line_number, user_value))
 
         if (
             stripped_line.upper().startswith("RUN ")
@@ -95,5 +84,45 @@ def scan_dockerfile(
                     severity="HIGH",
                 )
             )
+
+    for stage in stages:
+        start_line = stage["start_line"]
+        user_instructions = stage["user_instructions"]
+
+        if not user_instructions:
+            findings.append(
+                DockerfileFinding(
+                    rule_id="GR001",
+                    message=(
+                        "Build stage does not specify a USER instruction."
+                    ),
+                    line_number=start_line,
+                    severity="HIGH",
+                )
+            )
+
+        for line_number, user_value in user_instructions:
+            if user_value.lower() in {"root", "0"}:
+                findings.append(
+                    DockerfileFinding(
+                        rule_id="GR001",
+                        message=(
+                            "USER instruction explicitly selects "
+                            "the root user."
+                        ),
+                        line_number=line_number,
+                        severity="HIGH",
+                    )
+                )
+
+    if not stages:
+        findings.append(
+            DockerfileFinding(
+                rule_id="GR001",
+                message="Dockerfile does not contain a FROM instruction.",
+                line_number=1,
+                severity="HIGH",
+            )
+        )
 
     return findings

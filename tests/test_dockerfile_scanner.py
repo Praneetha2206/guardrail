@@ -129,3 +129,45 @@ def test_accepts_non_root_user_by_name(tmp_path):
     findings = scan_dockerfile(dockerfile)
 
     assert findings == []
+
+
+
+def test_reports_user_switching_back_to_root(tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "FROM python:3.13-slim\n"
+        "USER app\n"
+        "USER root\n",
+        encoding="utf-8",
+    )
+
+    findings = scan_dockerfile(dockerfile)
+
+    root_findings = [
+        finding
+        for finding in findings
+        if finding.rule_id == "GR001"
+    ]
+
+    assert len(root_findings) == 1
+    assert root_findings[0].line_number == 3
+
+
+def test_reports_build_stage_without_user_instruction(tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "FROM python:3.13-slim AS builder\n"
+        "USER app\n"
+        "RUN echo build\n"
+        "FROM python:3.13-slim AS runtime\n"
+        "CMD [\"python\", \"--version\"]\n",
+        encoding="utf-8",
+    )
+
+    findings = scan_dockerfile(dockerfile)
+
+    assert any(
+        finding.rule_id == "GR001"
+        and finding.line_number == 4
+        for finding in findings
+    )
