@@ -1,3 +1,4 @@
+
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,25 +22,16 @@ def scan_dockerfile(
         raise FileNotFoundError(f"Dockerfile not found: {path}")
 
     findings: list[DockerfileFinding] = []
-
     lines = path.read_text(encoding="utf-8").splitlines()
 
-    has_user_instruction = any(
-        line.strip().upper().startswith("USER ")
-        for line in lines
-    )
+    user_instructions: list[tuple[int, str]] = []
 
-    if not has_user_instruction:
-        findings.append(
-            DockerfileFinding(
-                rule_id="GR001",
-                message="Dockerfile does not specify a USER instruction.",
-                line_number=1,
-                severity="HIGH",
-            )
-        )
     for line_number, line in enumerate(lines, start=1):
         stripped_line = line.strip()
+
+        if stripped_line.upper().startswith("USER "):
+            user_value = stripped_line.split(maxsplit=1)[1].split(":")[0]
+            user_instructions.append((line_number, user_value))
 
         if stripped_line.upper().startswith("FROM "):
             image_reference = stripped_line.split()[1]
@@ -56,7 +48,31 @@ def scan_dockerfile(
                         severity="MEDIUM",
                     )
                 )
-        remote_script_pattern = re.compile(
+
+    if not user_instructions:
+        findings.append(
+            DockerfileFinding(
+                rule_id="GR001",
+                message="Dockerfile does not specify a USER instruction.",
+                line_number=1,
+                severity="HIGH",
+            )
+        )
+
+    for line_number, user_value in user_instructions:
+        if user_value.lower() in {"root", "0"}:
+            findings.append(
+                DockerfileFinding(
+                    rule_id="GR001",
+                    message=(
+                        "USER instruction explicitly selects the root user."
+                    ),
+                    line_number=line_number,
+                    severity="HIGH",
+                )
+            )
+
+    remote_script_pattern = re.compile(
         r"\b(curl|wget)\b.*\|\s*(sh|bash)\b",
         re.IGNORECASE,
     )
@@ -69,14 +85,15 @@ def scan_dockerfile(
             and remote_script_pattern.search(stripped_line)
         ):
             findings.append(
-                    DockerfileFinding(
-                        rule_id="GR003",
-                        message=(
-                            "RUN instruction pipes a remote download "
-                            "directly into a shell."
-                        ),
-                        line_number=line_number,
-                        severity="HIGH",
-                    )
+                DockerfileFinding(
+                    rule_id="GR003",
+                    message=(
+                        "RUN instruction pipes a remote download "
+                        "directly into a shell."
+                    ),
+                    line_number=line_number,
+                    severity="HIGH",
                 )
+            )
+
     return findings

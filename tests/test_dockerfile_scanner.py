@@ -85,3 +85,47 @@ def test_accepts_run_without_remote_script_pipe(tmp_path):
     findings = scan_dockerfile(dockerfile)
 
     assert findings == []
+
+
+def test_reports_root_user_by_name(tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "FROM python:3.13-slim\n"
+        "USER root\n",
+        encoding="utf-8",
+    )
+
+    findings = scan_dockerfile(dockerfile)
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "GR001"
+    assert findings[0].line_number == 2
+    assert findings[0].severity == "HIGH"
+
+
+def test_reports_root_user_by_uid(tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "FROM python:3.13-slim\n"
+        "USER 0:0\n",
+        encoding="utf-8",
+    )
+
+    findings = scan_dockerfile(dockerfile)
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "GR001"
+    assert findings[0].line_number == 2
+
+
+def test_accepts_non_root_user_by_name(tmp_path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text(
+        "FROM python:3.13-slim\n"
+        "USER app\n",
+        encoding="utf-8",
+    )
+
+    findings = scan_dockerfile(dockerfile)
+
+    assert findings == []
