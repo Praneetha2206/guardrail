@@ -37,9 +37,9 @@ def main() -> None:
         help="Path to a Dockerfile.",
     )
     scan_parser.add_argument(
-    "--json-report",
-    help="Write scan results to a JSON file.",
-    )  
+        "--json-report",
+        help="Write scan results to a JSON file.",
+    ) 
     args = parser.parse_args()
 
     if args.command != "scan":
