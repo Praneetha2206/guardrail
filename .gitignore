@@ -19,3 +19,5 @@ htmlcov/
 # Build artifacts
 build/
 dist/
+# GuardRail generated reports
+reports/
