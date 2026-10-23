@@ -152,3 +152,60 @@ def test_scan_rejects_invalid_vulnerability_metadata(
 
     with pytest.raises(DependencyScanError, match=field):
         scan_dependencies(requirements)
+
+
+
+def test_scan_handles_timeout(tmp_path, monkeypatch):
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("example-package==1.0.0\n", encoding="utf-8")
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=120)
+
+    monkeypatch.setattr(
+        "guardrail.dependency_scanner.subprocess.run",
+        fake_run,
+    )
+
+    with pytest.raises(DependencyScanError, match="timed out"):
+        scan_dependencies(requirements)
+
+
+def test_scan_handles_launch_failure(tmp_path, monkeypatch):
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("example-package==1.0.0\n", encoding="utf-8")
+
+    def fake_run(*args, **kwargs):
+        raise OSError("Simulated process launch failure")
+
+    monkeypatch.setattr(
+        "guardrail.dependency_scanner.subprocess.run",
+        fake_run,
+    )
+
+    with pytest.raises(DependencyScanError, match="Could not start pip-audit"):
+        scan_dependencies(requirements)
+
+
+def test_scan_rejects_unexpected_exit_code(tmp_path, monkeypatch):
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("example-package==1.0.0\n", encoding="utf-8")
+
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(
+            args=args[0],
+            returncode=2,
+            stdout="[]",
+            stderr="Unexpected scanner failure",
+        )
+
+    monkeypatch.setattr(
+        "guardrail.dependency_scanner.subprocess.run",
+        fake_run,
+    )
+
+    with pytest.raises(
+        DependencyScanError,
+        match="exited with code 2",
+    ):
+        scan_dependencies(requirements)
